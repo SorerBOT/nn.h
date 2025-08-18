@@ -60,7 +60,7 @@ void* nn_malloc_debug(size_t size, const char* file, int line);
 NN_Neuron nn_neuron_init(size_t weights_count);
 void nn_neuron_rand(NN_Neuron* neuron);
 
-NN_Layer nn_layer_io_init_from_array(float* activations, size_t activations_count);
+NN_Layer nn_layer_init_from_array(float* activations, size_t activations_count);
 
 NN_Network nn_network_init(size_t* architecture, size_t count);
 void nn_network_rand(NN_Network nn);
@@ -68,7 +68,7 @@ void nn_network_forward(NN_Network nn);
 void nn_network_print(NN_Network nn);
 void nn_network_set_input(NN_Network nn, NN_Layer inputs);
 float nn_network_cost(NN_Network nn, NN_Layer* inputs, NN_Layer* outputs, size_t entries_count);
-NN_Network nn_network_finite_sums(NN_Network nn, float cost, float* outputs, size_t outputs_count);
+NN_Network nn_network_finite_differences(NN_Network nn, float cost, float* outputs, size_t outputs_count);
 
 static void __nn_network_zero(NN_Network nn);
 
@@ -272,5 +272,16 @@ float nn_network_cost(NN_Network nn, NN_Layer* inputs, NN_Layer* outputs, size_t
     }
 
     return cost / entries_count; // taking the avg sum
+}
+
+NN_Network nn_network_finite_differences(NN_Network nn, float cost, float* outputs, size_t outputs_count)
+{
+    for (size_t i = 0; i < nn.layers_count; ++i)
+    {
+        for (size_t j = 0; j < nn.layers_count; ++j)
+        {
+
+        }
+    }
 }
 #endif // NN_IMPLEMNTATION
