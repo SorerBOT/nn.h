@@ -22,6 +22,8 @@
 #endif
 
 #define ARRAY_LEN(xs) sizeof((xs))/sizeof((xs[0]))
+#define NN_INPUTS(nn) (nn).layers[0]
+#define NN_OUTPUTS(nn) (nn).layers[(nn).layers_count - 1]
 
 typedef enum
 {
@@ -54,11 +56,19 @@ typedef struct
 float nn_randf(float min, float max);
 
 void* nn_malloc_debug(size_t size, const char* file, int line);
+
 NN_Neuron nn_neuron_init(size_t weights_count);
+void nn_neuron_rand(NN_Neuron* neuron);
+
+NN_Layer nn_layer_io_init_from_array(float* activations, size_t activations_count);
+
 NN_Network nn_network_init(size_t* architecture, size_t count);
+void nn_network_rand(NN_Network nn);
 void nn_network_forward(NN_Network nn);
 void nn_network_print(NN_Network nn);
-void nn_network_set_input(NN_Network nn, float* inputs, size_t inputs_count);
+void nn_network_set_input(NN_Network nn, NN_Layer inputs);
+float nn_network_cost(NN_Network nn, NN_Layer* inputs, NN_Layer* outputs, size_t entries_count);
+NN_Network nn_network_finite_sums(NN_Network nn, float cost, float* outputs, size_t outputs_count);
 
 static void __nn_network_zero(NN_Network nn);
 
@@ -89,16 +99,37 @@ float nn_randf(float min, float max)
 NN_Neuron nn_neuron_init(size_t weights_count)
 {
     NN_Neuron n;
-    n.bias = NN_RANDF();
+    n.bias = 0.f;
     n.act = 0.f;
     n.weights_count = weights_count;
     n.weights = (float*) NN_MALLOC(sizeof(*n.weights) * n.weights_count);
     for (size_t i = 0; i < n.weights_count; ++i)
     {
-        n.weights[i] = NN_RANDF();
+        n.weights[i] = 0.f;
     }
 
     return n;
+}
+void nn_neuron_rand(NN_Neuron* neuron)
+{
+    neuron->bias = NN_RANDF();
+    for (size_t i = 0; i < neuron->weights_count; ++i)
+    {
+        neuron->weights[i] = NN_RANDF();
+    }
+}
+
+NN_Layer nn_layer_io_init_from_array(float* activations, size_t activations_count)
+{
+    NN_Layer l;
+    l.neurons_count = activations_count;
+    l.neurons = (NN_Neuron*) NN_MALLOC(sizeof(NN_Neuron) * activations_count);
+
+    for (size_t i = 0; i < activations_count; ++i)
+    {
+        l.neurons[i].act = activations[i];
+    }
+    return l;
 }
 
 NN_Network nn_network_init(size_t* layer_sizes, size_t layers_count)
@@ -126,16 +157,27 @@ NN_Network nn_network_init(size_t* layer_sizes, size_t layers_count)
 
     return nn;
 }
+void nn_network_rand(NN_Network nn)
+{
+    for (size_t i = 0; i < nn.layers_count; ++i)
+    {
+        NN_Layer* l = &nn.layers[i];
+        for (size_t j = 0; j < l->neurons_count; ++j)
+        {
+            nn_neuron_rand(&l->neurons[j]);
+        }
+    }
+}
 
-void nn_network_set_input(NN_Network nn, float* inputs, size_t inputs_count)
+void nn_network_set_input(NN_Network nn, NN_Layer input)
 {
     NN_Layer input_layer = nn.layers[0];
-    NN_ASSERT(input_layer.neurons_count == inputs_count);
+    NN_ASSERT(input_layer.neurons_count == input.neurons_count);
 
-    for (size_t i = 0; i < inputs_count; ++i)
+    for (size_t i = 0; i < input_layer.neurons_count; ++i)
     {
         NN_Neuron* neuron = &input_layer.neurons[i];
-        neuron->act = inputs[i];
+        neuron->act = input.neurons[i].act;
     }
 }
 
@@ -187,9 +229,9 @@ void nn_network_print(NN_Network nn)
         {
             NN_Neuron neuron = layer.neurons[j];
             printf("\tNeuron%lu {\n", j);
-            printf("\t\t act = %f,\n", neuron.act);
-            printf("\t\t bias = %f,\n", neuron.bias);
-            printf("\t\t weights = [\n");
+            printf("\t\tact = %f,\n", neuron.act);
+            printf("\t\tbias = %f,\n", neuron.bias);
+            printf("\t\tweights = [\n");
             for (size_t k = 0; k < neuron.weights_count; ++k)
             {
                 if (k == neuron.weights_count - 1)
@@ -198,10 +240,37 @@ void nn_network_print(NN_Network nn)
                     printf("\t\t\t weight%lu = %f,\n", k, neuron.weights[k]);
             }
             printf("\t\t]\n");
-
         }
+        printf("}\n");
     }
-
 }
 
+float nn_network_cost(NN_Network nn, NN_Layer* inputs, NN_Layer* outputs, size_t entries_count)
+{
+    float cost = 0.f;
+    for (size_t i = 0; i < entries_count; ++i)
+    {
+        float partial_cost = 0.f;
+
+        NN_Layer input = inputs[i];
+        NN_Layer output = outputs[i];
+
+        NN_ASSERT(NN_INPUTS(nn).neurons_count == input.neurons_count);
+        NN_ASSERT(NN_OUTPUTS(nn).neurons_count == output.neurons_count);
+
+        nn_network_set_input(nn, input);
+        nn_network_forward(nn);
+
+        for (size_t j = 0; j < output.neurons_count; ++j)
+        {
+            float prediction = NN_OUTPUTS(nn).neurons[j].act;
+            float expected   = output.neurons[j].act;
+            float distance   = prediction - expected;
+            partial_cost     += distance * distance;
+        }
+        cost += partial_cost; // perhaps we'd want to square it in the future
+    }
+
+    return cost / entries_count; // taking the avg sum
+}
 #endif // NN_IMPLEMNTATION
