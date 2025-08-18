@@ -1,6 +1,7 @@
 #ifndef NN_H_
 #define NN_H_
 
+#include <math.h>
 #include <stdio.h>
 #ifndef NN_SAFE_ALLOC
 #define NN_SAFE_ALLOC 1
@@ -54,6 +55,7 @@ typedef struct
 } NN_Network;
 
 float nn_randf(float min, float max);
+float nn_sigmoidf(float x);
 
 void* nn_malloc_debug(size_t size, const char* file, int line);
 
@@ -95,7 +97,12 @@ float nn_randf(float min, float max)
     float range_size = max - min;
     return min + unit_random * range_size;
 }
-#define NN_RANDF() nn_randf(-5.f, 5.f)
+#define NN_RANDF() nn_randf(-1.f, 1.f)
+
+float nn_sigmoidf(float x)
+{
+    return 1.f / (1.f + expf(-x));
+}
 
 NN_Neuron nn_neuron_init(size_t weights_count)
 {
@@ -160,7 +167,7 @@ NN_Network nn_network_init(size_t* layer_sizes, size_t layers_count)
 }
 void nn_network_rand(NN_Network nn)
 {
-    for (size_t i = 0; i < nn.layers_count; ++i)
+    for (size_t i = 1; i < nn.layers_count; ++i)
     {
         NN_Layer* l = &nn.layers[i];
         for (size_t j = 0; j < l->neurons_count; ++j)
@@ -199,7 +206,10 @@ void nn_network_forward(NN_Network nn)
                 NN_Neuron* neuron_prev = &layer_prev->neurons[k];
                 sum += neuron_prev->act * neuron->weights[k];
             }
-            neuron->act = sum;
+            
+            neuron->act = (i == nn.layers_count - 1)
+                ? neuron->act = sum
+                : nn_sigmoidf(sum);
         }
     }
 }
@@ -312,7 +322,7 @@ void nn_network_finite_differences(NN_Network nn, NN_Network gradient, float eps
 void nn_network_learn(NN_Network nn, NN_Network gradient, float learning_rate)
 {
     NN_ASSERT(nn.layers_count == gradient.layers_count);
-    for (size_t i = 0; i < nn.layers_count; ++i)
+    for (size_t i = 1; i < nn.layers_count; ++i)
     {
         NN_Layer* l = &nn.layers[i];
         NN_ASSERT(l->neurons_count == gradient.layers[i].neurons_count);

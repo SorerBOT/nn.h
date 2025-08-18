@@ -32,14 +32,17 @@ int main(void)
         outputs[i] = nn_layer_io_init_from_array(training_output[i], 1);
     }
 
-    for (size_t epoch = 0; epoch < 100 * 1000; ++epoch)
+    float cost = nn_network_cost(nn, inputs, outputs, 3);
+    printf("cost = %f\n", cost);
+    for (size_t epoch = 0; epoch < 1000 * 1000; ++epoch)
     {
         nn_network_finite_differences(nn, gradient, 1e-3, inputs, outputs, 3);
         nn_network_learn(nn, gradient, 1e-3);
+        float cost = nn_network_cost(nn, inputs, outputs, 3);
+        printf("Epoch = %lu, cost = %f\n", epoch, cost);
     }
-    float cost = nn_network_cost(nn, inputs, outputs, 3);
-    printf("Finished training. Cost = %f\n", cost);
-    nn_network_print(nn);
+    //float cost = nn_network_cost(nn, inputs, outputs, 3);
+    //printf("Finished training. Cost = %f\n", cost);
 
     return 0;
 }
