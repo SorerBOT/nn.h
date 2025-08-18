@@ -68,7 +68,8 @@ void nn_network_forward(NN_Network nn);
 void nn_network_print(NN_Network nn);
 void nn_network_set_input(NN_Network nn, NN_Layer inputs);
 float nn_network_cost(NN_Network nn, NN_Layer* inputs, NN_Layer* outputs, size_t entries_count);
-NN_Network nn_network_finite_differences(NN_Network nn, float cost, float* outputs, size_t outputs_count);
+void nn_network_finite_differences(NN_Network nn, NN_Network gradient, float epsilon, NN_Layer* inputs, NN_Layer* outputs, size_t entries_count);
+void nn_network_learn(NN_Network nn, NN_Network gradient, float learning_rate);
 
 static void __nn_network_zero(NN_Network nn);
 
@@ -207,11 +208,11 @@ static void __nn_network_zero(NN_Network nn)
 {
     for (size_t i = 1; i < nn.layers_count; ++i)
     {
-        NN_Layer layer = nn.layers[i];
-        for (size_t j = 0; j < layer.neurons_count; ++j)
+        NN_Layer* layer = &nn.layers[i];
+        for (size_t j = 0; j < layer->neurons_count; ++j)
         {
-            NN_Neuron neuron = layer.neurons[j];
-            neuron.act = 0.f;
+            NN_Neuron* neuron = &layer->neurons[j];
+            neuron->act = 0.f;
         }
     }
 }
@@ -274,13 +275,55 @@ float nn_network_cost(NN_Network nn, NN_Layer* inputs, NN_Layer* outputs, size_t
     return cost / entries_count; // taking the avg sum
 }
 
-NN_Network nn_network_finite_differences(NN_Network nn, float cost, float* outputs, size_t outputs_count)
+void nn_network_finite_differences(NN_Network nn, NN_Network gradient, float epsilon,
+                                 NN_Layer* inputs, NN_Layer* outputs, size_t entries_count)
 {
+    float cost_original = nn_network_cost(nn, inputs, outputs, entries_count);
+
     for (size_t i = 0; i < nn.layers_count; ++i)
     {
-        for (size_t j = 0; j < nn.layers_count; ++j)
+        NN_Layer* l = &nn.layers[i];
+        for (size_t j = 0; j < l->neurons_count; ++j)
         {
+            NN_Neuron* neuron = &l->neurons[j];
+            float temp;
+            float cost_new;
+            float partial_derivative;
 
+            for (size_t k = 0; k < neuron->weights_count; ++k)
+            {
+                temp = neuron->weights[k];
+                neuron->weights[k] += epsilon;
+                cost_new = nn_network_cost(nn, inputs, outputs, entries_count);
+                partial_derivative = (cost_new - cost_original) / epsilon;
+                gradient.layers[i].neurons[j].weights[k] = partial_derivative;
+                neuron->weights[k] = temp;
+            }
+            temp = neuron->bias;
+            neuron->bias += epsilon;
+            cost_new = nn_network_cost(nn, inputs, outputs, entries_count);
+            partial_derivative = (cost_new - cost_original) / epsilon;
+            gradient.layers[i].neurons[j].bias = partial_derivative;
+            neuron->bias = temp;
+        }
+    }
+}
+
+void nn_network_learn(NN_Network nn, NN_Network gradient, float learning_rate)
+{
+    NN_ASSERT(nn.layers_count == gradient.layers_count);
+    for (size_t i = 0; i < nn.layers_count; ++i)
+    {
+        NN_Layer* l = &nn.layers[i];
+        NN_ASSERT(l->neurons_count == gradient.layers[i].neurons_count);
+        for (size_t j = 0; j < l->neurons_count; ++j)
+        {
+            NN_Neuron* neuron = &l->neurons[j];
+            for (size_t k = 0; k < neuron->weights_count; ++k)
+            {
+                neuron->weights[k] -= gradient.layers[i].neurons[j].weights[k] * learning_rate;
+            }
+            neuron->bias -= gradient.layers[i].neurons[j].bias * learning_rate;
         }
     }
 }
