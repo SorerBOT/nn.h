@@ -23,6 +23,9 @@
 #endif
 
 #define ARRAY_LEN(xs) sizeof((xs))/sizeof((xs[0]))
+
+#define NN_MATRIX_AT(m, i, j) (m).data[(i)*(m).stride + (j)]
+
 #define NN_INPUTS(nn) (nn).layers[0]
 #define NN_OUTPUTS(nn) (nn).layers[(nn).layers_count - 1]
 
@@ -32,6 +35,14 @@ typedef enum
     ACT_SIG,
     ACT_RELU
 } NN_ACT;
+
+typedef struct
+{
+    size_t rows;
+    size_t cols;
+    size_t stride;
+    float* data; // contiguous block is easier to re-shape
+} NN_Matrix;
 
 typedef struct 
 {
@@ -62,7 +73,9 @@ void* nn_malloc_debug(size_t size, const char* file, int line);
 NN_Neuron nn_neuron_init(size_t weights_count);
 void nn_neuron_rand(NN_Neuron* neuron);
 
-NN_Layer nn_layer_init_from_array(float* activations, size_t activations_count);
+NN_Layer nn_layer_init(size_t neurons_count, NN_ACT act_func);
+NN_Layer nn_layer_io_init_from_array(float* activations, size_t activations_count);
+NN_Layer* nn_layer_io_init_from_matrix(NN_Matrix mat);
 
 NN_Network nn_network_init(size_t* architecture, size_t count);
 void nn_network_rand(NN_Network nn);
@@ -127,17 +140,67 @@ void nn_neuron_rand(NN_Neuron* neuron)
     }
 }
 
+NN_Layer nn_layer_init(size_t neurons_count, NN_ACT act_func)
+{
+    NN_Neuron* neurons = (NN_Neuron*) NN_MALLOC(sizeof(NN_Neuron)*neurons_count);
+    return (NN_Layer)
+    {
+        .act = act_func,
+        .neurons_count = neurons_count,
+        .neurons = neurons
+    };
+}
+
 NN_Layer nn_layer_io_init_from_array(float* activations, size_t activations_count)
 {
-    NN_Layer l;
-    l.neurons_count = activations_count;
-    l.neurons = (NN_Neuron*) NN_MALLOC(sizeof(NN_Neuron) * activations_count);
+    NN_Neuron* neurons = (NN_Neuron*) NN_MALLOC(sizeof(NN_Neuron)*activations_count);
+    NN_Layer layer =
+    {
+        .neurons_count = activations_count,
+        .neurons = neurons
+    };
 
     for (size_t i = 0; i < activations_count; ++i)
     {
-        l.neurons[i].act = activations[i];
+        layer.neurons[i] = (NN_Neuron)
+        {
+            .act = activations[i],
+            .weights_count = 0,
+            .weights = NULL,
+            .bias = 0.f
+        };
     }
-    return l;
+
+    return layer;
+}
+
+NN_Layer* nn_layer_io_init_from_matrix(NN_Matrix mat)
+{
+    NN_Layer* layers = (NN_Layer*) NN_MALLOC(sizeof(NN_Layer)*mat.cols);
+
+    for (size_t i = 0; i < mat.rows; ++i)
+    {
+        NN_Neuron* neurons = (NN_Neuron*) NN_MALLOC(sizeof(NN_Neuron)*mat.cols);
+        layers[i] = (NN_Layer)
+        {
+            .neurons = neurons,
+            .neurons_count = mat.cols
+        };
+
+        for (size_t j = 0; j < mat.cols; ++j)
+        {
+            layers[i].neurons[j] = (NN_Neuron)
+            {
+                .act = NN_MATRIX_AT(mat, i, j),
+                .weights_count = 0,
+                .weights = NULL,
+                .bias = 0.f
+            };
+        }
+        
+    }
+
+    return layers;
 }
 
 NN_Network nn_network_init(size_t* layer_sizes, size_t layers_count)
