@@ -65,10 +65,12 @@ typedef struct
     size_t layers_count;
 } NN_Network;
 
+void* nn_malloc_debug(size_t size, const char* file, int line);
+
 float nn_randf(float min, float max);
 float nn_sigmoidf(float x);
 
-void* nn_malloc_debug(size_t size, const char* file, int line);
+void nn_matrix_print(NN_Matrix mat);
 
 NN_Neuron nn_neuron_init(size_t weights_count);
 void nn_neuron_rand(NN_Neuron* neuron);
@@ -82,8 +84,10 @@ void nn_network_rand(NN_Network nn);
 void nn_network_forward(NN_Network nn);
 void nn_network_print(NN_Network nn);
 void nn_network_set_input(NN_Network nn, NN_Layer inputs);
-float nn_network_cost(NN_Network nn, NN_Layer* inputs, NN_Layer* outputs, size_t entries_count);
-void nn_network_finite_differences(NN_Network nn, NN_Network gradient, float epsilon, NN_Layer* inputs, NN_Layer* outputs, size_t entries_count);
+float nn_network_cost(NN_Network nn, NN_Layer* inputs, NN_Layer* outputs_expected, size_t entries_count);
+void nn_network_finite_differences(NN_Network nn, NN_Network gradient, float epsilon, NN_Layer* inputs, NN_Layer* outputs_expected, size_t entries_count);
+void nn_network_zero_activations(NN_Network gradient);
+void nn_network_backpropagation(NN_Network nn, NN_Network gradient, NN_Layer* inputs, NN_Layer* outputs_expected, size_t entries_count);
 void nn_network_learn(NN_Network nn, NN_Network gradient, float learning_rate);
 
 static void __nn_network_zero(NN_Network nn);
@@ -103,6 +107,7 @@ void* nn_malloc_debug(size_t size, const char* file, int line)
     return ptr;
 }
 #endif
+
 float nn_randf(float min, float max)
 {
     NN_ASSERT(min < max);
@@ -115,6 +120,23 @@ float nn_randf(float min, float max)
 float nn_sigmoidf(float x)
 {
     return 1.f / (1.f + expf(-x));
+}
+
+void nn_matrix_print(NN_Matrix mat)
+{
+    printf("[\n");
+    for (size_t i = 0; i < mat.rows; ++i)
+    {
+        printf("\t");
+        for (size_t j = 0; j < mat.cols; ++j)
+        {
+            if (j == mat.cols - 1)
+                printf("%f\n", NN_MATRIX_AT(mat, i, j));
+            else
+                printf("%f  ", NN_MATRIX_AT(mat, i, j));
+        }
+    }
+    printf("]\n");
 }
 
 NN_Neuron nn_neuron_init(size_t weights_count)
@@ -176,7 +198,7 @@ NN_Layer nn_layer_io_init_from_array(float* activations, size_t activations_coun
 
 NN_Layer* nn_layer_io_init_from_matrix(NN_Matrix mat)
 {
-    NN_Layer* layers = (NN_Layer*) NN_MALLOC(sizeof(NN_Layer)*mat.cols);
+    NN_Layer* layers = (NN_Layer*) NN_MALLOC(sizeof(NN_Layer)*mat.rows);
 
     for (size_t i = 0; i < mat.rows; ++i)
     {
@@ -319,7 +341,7 @@ void nn_network_print(NN_Network nn)
     }
 }
 
-float nn_network_cost(NN_Network nn, NN_Layer* inputs, NN_Layer* outputs, size_t entries_count)
+float nn_network_cost(NN_Network nn, NN_Layer* inputs, NN_Layer* outputs_expected, size_t entries_count)
 {
     float cost = 0.f;
     for (size_t i = 0; i < entries_count; ++i)
@@ -327,7 +349,7 @@ float nn_network_cost(NN_Network nn, NN_Layer* inputs, NN_Layer* outputs, size_t
         float partial_cost = 0.f;
 
         NN_Layer input = inputs[i];
-        NN_Layer output = outputs[i];
+        NN_Layer output = outputs_expected[i];
 
         NN_ASSERT(NN_INPUTS(nn).neurons_count == input.neurons_count);
         NN_ASSERT(NN_OUTPUTS(nn).neurons_count == output.neurons_count);
@@ -349,9 +371,9 @@ float nn_network_cost(NN_Network nn, NN_Layer* inputs, NN_Layer* outputs, size_t
 }
 
 void nn_network_finite_differences(NN_Network nn, NN_Network gradient, float epsilon,
-                                 NN_Layer* inputs, NN_Layer* outputs, size_t entries_count)
+                                 NN_Layer* inputs, NN_Layer* outputs_expected, size_t entries_count)
 {
-    float cost_original = nn_network_cost(nn, inputs, outputs, entries_count);
+    float cost_original = nn_network_cost(nn, inputs, outputs_expected, entries_count);
 
     for (size_t i = 0; i < nn.layers_count; ++i)
     {
@@ -367,17 +389,126 @@ void nn_network_finite_differences(NN_Network nn, NN_Network gradient, float eps
             {
                 temp = neuron->weights[k];
                 neuron->weights[k] += epsilon;
-                cost_new = nn_network_cost(nn, inputs, outputs, entries_count);
+                cost_new = nn_network_cost(nn, inputs, outputs_expected, entries_count);
                 partial_derivative = (cost_new - cost_original) / epsilon;
                 gradient.layers[i].neurons[j].weights[k] = partial_derivative;
                 neuron->weights[k] = temp;
             }
             temp = neuron->bias;
             neuron->bias += epsilon;
-            cost_new = nn_network_cost(nn, inputs, outputs, entries_count);
+            cost_new = nn_network_cost(nn, inputs, outputs_expected, entries_count);
             partial_derivative = (cost_new - cost_original) / epsilon;
             gradient.layers[i].neurons[j].bias = partial_derivative;
             neuron->bias = temp;
+        }
+    }
+}
+
+void nn_network_zero_activations(NN_Network gradient)
+{
+    for (size_t l = 0; l < gradient.layers_count; ++l)
+    {
+        for (size_t m = 0; m < gradient.layers[l].neurons_count; ++m)
+            gradient.layers[l].neurons[m].act = 0;
+    }
+}
+
+void nn_network_backpropagation(NN_Network nn, NN_Network gradient, NN_Layer* inputs, NN_Layer* outputs_expected, size_t entries_count)
+{
+    NN_ASSERT(nn.layers_count == gradient.layers_count);
+
+    NN_Layer* layer_last = &NN_OUTPUTS(nn);
+    for (size_t i = 0; i < entries_count; ++i)
+    {
+        nn_network_set_input(nn, inputs[i]);
+        nn_network_forward(nn);
+        for (size_t l = nn.layers_count; l-- > 0;) // l starts at nn.layers_count -1, weird line. Did not want to deal with size_t and int comparisons
+        {
+            NN_Layer* layer = &nn.layers[l];
+            for (size_t m = 0; m < layer->neurons_count; ++m)
+            {
+                NN_Neuron* neuron = &layer->neurons[m];
+                for (size_t j = 0; j < layer_last->neurons_count; ++j)
+                {
+                    /*
+                     * Initialising dynamic programming
+                     */
+                    nn_network_zero_activations(gradient);
+                    for (size_t d = 0; d < layer_last->neurons_count; ++d)
+                    {
+                        gradient.layers[gradient.layers_count - 1].neurons[d].act = (d == j)
+                            ? 1.f
+                            : 0.f;
+                    }
+
+                    float prediction = layer_last->neurons[j].act;
+                    float expected = outputs_expected[i].neurons[j].act;
+
+                    /*
+                     * Calculating the derivative of the weights 
+                     */
+                    for (size_t t = 0; t < neuron->weights_count; ++t)
+                    {
+                        float d_pred_j_d_weight = 0.f;
+                        if (l == nn.layers_count - 1)
+                        {
+                            d_pred_j_d_weight = (m == j)
+                                ? nn.layers[l-1].neurons[t].act
+                                : 0.f;
+
+                        }
+                        else
+                        {
+                            float d_act_d_weight = nn.layers[l].neurons[m].act * (1 - nn.layers[l].neurons[m].act) * nn.layers[l-1].neurons[t].act;
+                            float d_pred_j_d_act = 0.f;
+                            for (size_t k = 0; k < nn.layers[l+1].neurons_count; ++k)
+                            {
+                                float d_pred_j_d_act_next = gradient.layers[l+1].neurons[k].act;
+                                float d_act_next_d_act = nn.layers[l+1].neurons[k].act * (1 - nn.layers[l+1].neurons[k].act) * nn.layers[l+1].neurons[k].weights[m];
+                                d_pred_j_d_act += d_pred_j_d_act_next * d_act_next_d_act;
+                            }
+                            gradient.layers[l].neurons[m].act = d_pred_j_d_act;
+                            d_pred_j_d_weight = d_pred_j_d_act * d_act_d_weight;
+                        }
+                        gradient.layers[l].neurons[m].weights[t] += 2 * (prediction - expected) * d_pred_j_d_weight;
+                    }
+
+                    /*
+                     * Calculating the derivative of the bias
+                     */
+                    float d_pred_j_d_bias = 0.f;
+                    if (l == nn.layers_count - 1)
+                    {
+                        d_pred_j_d_bias = (m == j)
+                            ? 1.f
+                            : 0.f;
+                    }
+                    else
+                    {
+                        for (size_t t = 0; t < nn.layers[l+1].neurons_count; ++t)
+                        {
+                            float act_next = nn.layers[l+1].neurons[t].act;
+                            float weight_m_t = nn.layers[l+1].neurons[t].weights[m];
+                            float d_act_next_d_bias = act_next * (1 - act_next) * weight_m_t * neuron->act * (1 - neuron->act);
+                            float d_pred_j_d_act_next = gradient.layers[l+1].neurons[t].act;
+                            d_pred_j_d_bias += d_pred_j_d_act_next * d_act_next_d_bias;
+                        }
+                    }
+                    gradient.layers[l].neurons[m].bias += 2 * (prediction - expected) * d_pred_j_d_bias;
+                }
+            }
+        }
+    }
+
+    for (size_t l = 0; l < gradient.layers_count; ++l)
+    {
+        for (size_t m = 0; m < gradient.layers[l].neurons_count; ++m)
+        {
+            gradient.layers[l].neurons[m].bias /= entries_count;
+            for (size_t t = 0; t < gradient.layers[l].neurons[m].weights_count; ++t)
+            {
+                gradient.layers[l].neurons[m].weights[t] /= entries_count;
+            }
         }
     }
 }

@@ -34,11 +34,11 @@ int main(void)
 
     for (size_t epoch = 0; epoch < 1000 * 1000; ++epoch)
     {
-        nn_network_finite_differences(nn, gradient, 1e-3, inputs, outputs, 3);
+        nn_network_finite_differences(nn, gradient, 1e-3, inputs, outputs, in.rows);
         nn_network_learn(nn, gradient, 1e-3);
     }
 
-    float cost = nn_network_cost(nn, inputs, outputs, 3);
+    float cost = nn_network_cost(nn, inputs, outputs, in.rows);
     printf("Finished training. Cost = %f\n", cost);
     printf("Result network: \n");
     nn_network_print(nn);
@@ -50,7 +50,7 @@ int main(void)
         NN_Layer input_layer = nn_layer_io_init_from_array(&input, 1);
         nn_network_set_input(nn, input_layer);
         nn_network_forward(nn);
-        printf("%lu * 2 = %f\n", i, nn.layers[nn.layers_count-1].neurons[0].act);
+        printf("%lu * 2 = %f\n", i, NN_OUTPUTS(nn).neurons[0].act);
     }
 
     return 0;

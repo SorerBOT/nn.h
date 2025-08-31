@@ -34,26 +34,13 @@ int main(void)
     NN_Layer* inputs = nn_layer_io_init_from_matrix(in);
     NN_Layer* outputs = nn_layer_io_init_from_matrix(out);
 
-    for (size_t epoch = 0; epoch < 10 * 1000; ++epoch)
-    {
-        if (epoch % 1000 == 0)
-            printf("epoch: %lu, cost: %f\n", epoch, nn_network_cost(nn, inputs, outputs, in.rows));
-        nn_network_backpropagation(nn, gradient, inputs, outputs, in.rows);
-        nn_network_learn(nn, gradient, 1e-1);
-    }
-
-    //float cost = nn_network_cost(nn, inputs, outputs, in.rows);
-    //printf("Finished training. Cost = %f\n", cost);
-    //printf("Result network: \n");
-    //nn_network_print(nn);
-    //printf("Testing the model: \n");
-
-    //for (size_t i = 0; i < in.rows; ++i)
-    //{
-    //    nn_network_set_input(nn, inputs[i]);
-    //    nn_network_forward(nn);
-    //    printf("%f ^ %f = %f\n", inputs[i].neurons[0].act, inputs[i].neurons[1].act, NN_OUTPUTS(nn).neurons[0].act);
-    //}
+#if 1
+    nn_network_finite_differences(nn, gradient, 1e-3, inputs, outputs, in.rows);
+    nn_network_print(gradient);
+#else
+    nn_network_backpropagation(nn, gradient, inputs, outputs, in.rows);
+    nn_network_print(gradient);
+#endif
 
     return 0;
 }
