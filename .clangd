@@ -1,2 +1,6 @@
 CompileFlags:
-  Add: [-DNN_IMPLEMENTATION]
+  Add: 
+    - -DNN_IMPLEMENTATION
+    - -DSTB_IMAGE_IMPLEMENTATION
+    - -Iexternal
+    - -Iinclude
