@@ -1,1 +1,3 @@
 *.o
+external/
+results/*
