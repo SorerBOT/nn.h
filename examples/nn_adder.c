@@ -1,5 +1,5 @@
 #define NN_IMPLEMENTATION
-#include "nn.h"
+#include "../nn.h"
 
 #define BITS 4
 int main(void)

@@ -3,7 +3,7 @@
 #include <stdlib.h>
 
 #define NN_IMPLEMENTATION
-#include "nn.h"
+#include "../nn.h"
 
 float training_data[][2] = {
     { 2.f, 4.f },

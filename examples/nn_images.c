@@ -3,7 +3,7 @@
 #include <math.h>
 
 #define NN_IMPLEMENTATION
-#include "nn.h"
+#include "../nn.h"
 
 #define STB_IMAGE_IMPLEMENTATION
 #include "stb_image.h"

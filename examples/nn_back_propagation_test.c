@@ -1,5 +1,5 @@
 #define NN_IMPLEMENTATION
-#include "nn.h"
+#include "../nn.h"
 
 float training_data[][3] = {
     { 0.f, 0.f, 0.f },
