@@ -1,1 +1,2 @@
 external/** linguist-vendored
+examples/** linguist-documentation=false
